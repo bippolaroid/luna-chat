@@ -1,4 +1,11 @@
-import { createSignal, createEffect, onMount } from "solid-js";
+import { createSignal, createEffect, Show } from "solid-js";
+
+interface msgProps {
+  id?: string;
+  role: string;
+  content: string;
+  status?: string;
+}
 
 const OLLAMA_API_URL = "http://localhost:11434/api";
 const LOCAL_STORAGE_KEY = "ollama_chat_history";
@@ -10,9 +17,18 @@ const App = () => {
   const [input, setInput] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal(null);
-  
+  const [isSystemPrompt, setIsSystemPrompt] = createSignal(false);
+  const [systemInput, setSystemInput] = createSignal("");
+
   let messagesEndRef;
-  let textareaRef;
+  let textareaRef: any;
+
+  createEffect(() => {
+    if (isSystemPrompt()) {
+      var systemPrompt = document.getElementById("system-prompt");
+      systemPrompt?.focus();
+    }
+  });
 
   // Save messages to localStorage whenever they change
   createEffect(() => {
@@ -78,7 +94,7 @@ const App = () => {
       setInput("");
 
       // Prepare conversation history for context
-      const conversationHistory = messages().map((msg) => ({
+      const conversationHistory = messages().map((msg: msgProps) => ({
         role: msg.role,
         content: msg.content,
       }));
@@ -96,7 +112,7 @@ const App = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "bippy/luna1a",
+          model: "bippy/luna1",
           messages: conversationHistory,
           stream: true,
         }),
@@ -129,7 +145,7 @@ const App = () => {
               accumulatedText += data.message.content;
 
               setMessages((prev) =>
-                prev.map((msg) =>
+                prev.map((msg: msgProps) =>
                   msg.id === assistantMessageId
                     ? {
                         ...msg,
@@ -151,13 +167,13 @@ const App = () => {
       }
     } catch (err) {
       console.error("Failed to send message:", err);
-      setError(err instanceof Error ? err.message : "Failed to send message");
+      setError(null);
       setIsLoading(false);
 
       setMessages((prev) => {
         const lastMsg = prev[prev.length - 1];
         if (lastMsg?.role === "assistant" && lastMsg.status === "pending") {
-          return prev.map((msg) =>
+          return prev.map((msg: msgProps) =>
             msg.id === lastMsg.id ? { ...msg, status: "error" } : msg
           );
         }
@@ -166,18 +182,31 @@ const App = () => {
     }
   };
 
-  const handleKeyPress = (e) => {
+  const handleKeyPress = (e: any) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   };
 
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "`" && !isSystemPrompt()) {
+      document.getElementById("user-prompt")?.focus();
+    }
+    if (e.key === "`") {
+      setIsSystemPrompt(true);
+    }
+    if (e.key === "Escape" || e.key === "Enter") {
+      setIsSystemPrompt(false);
+    }
+  });
+
   return (
     <div class="flex flex-col h-screen max-w-4xl mx-auto p-4 space-y-4">
       <div class="flex flex-col h-full border border-gray-300 rounded-lg shadow-md overflow-hidden">
         <div class="p-4 border-b flex justify-between items-center bg-white">
-          <h1 class="text-xl font-bold">Ollama Chat</h1>
+          <h1 class="text-lg">🌔 Hello. I'm Luna.</h1>
+          <h2 class="text-sm font-bold">What can I help you with?</h2>
           <button
             onClick={clearChat}
             class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
@@ -194,18 +223,32 @@ const App = () => {
         )}
 
         <div class="flex-grow overflow-y-auto p-4 space-y-4 bg-gray-50">
-          {messages().map((message) => (
+          {messages().map((message: msgProps) => (
             <div
-              class={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              key={message.id}
+              class={`flex ${
+                message.role === "user" ? "justify-end" : "justify-start"
+              }`}
+              id={message.id}
             >
               <div
                 class={`max-w-[80%] p-4 rounded-lg ${
-                  message.role === "user" ? "bg-blue-500 text-white" : "bg-white"
+                  message.role === "user"
+                    ? "bg-blue-500 text-white"
+                    : "bg-white"
                 }`}
               >
                 <div class="whitespace-pre-wrap">
-                  {message.content || (message.status === "pending" && "...")}
+                  <strong>
+                    <Show
+                      when={message.role === "user"}
+                      fallback={<>Assistant:&nbsp;</>}
+                    >
+                      User:&nbsp;
+                    </Show>
+                  </strong>
+                  <Show when={message.content} fallback={<b>...</b>}>
+                    {message.content}
+                  </Show>
                 </div>
                 {message.status === "error" && (
                   <div class="text-red-500 text-sm mt-2">
@@ -221,6 +264,7 @@ const App = () => {
         <div class="p-4 border-t bg-white">
           <div class="flex gap-2">
             <textarea
+              id="user-prompt"
               ref={textareaRef}
               class="flex-grow resize-none border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[52px] max-h-[200px]"
               rows={1}
@@ -240,6 +284,17 @@ const App = () => {
           </div>
         </div>
       </div>
+      <Show when={isSystemPrompt()}>
+        <div class="w-full font-bold rounded-lg shadow-md bg-red-700 text-white px-3 py-1">
+          SYSTEM PROMPT{" "}
+          <input
+            id="system-prompt"
+            type="text"
+            class="bg-transparent w-full font-normal outline-none"
+            onInput={(e) => setSystemInput(e.currentTarget.value)}
+          />
+        </div>
+      </Show>
     </div>
   );
 };
