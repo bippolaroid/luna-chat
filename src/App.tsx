@@ -10,6 +10,8 @@ interface msgProps {
 const OLLAMA_API_URL = "http://localhost:11434/api";
 const LOCAL_STORAGE_KEY = "ollama_chat_history";
 
+const SYSTEM_MODEL = "bippy/mav";
+
 const App = () => {
   const [messages, setMessages] = createSignal(
     JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "[]")
@@ -112,7 +114,7 @@ const App = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "bippy/luna1",
+          model: SYSTEM_MODEL,
           messages: conversationHistory,
           stream: true,
         }),
