@@ -203,6 +203,20 @@ const App = () => {
     }
   });
 
+  // JSON Export
+  function exportAsJson() {
+    const messagesForExport = JSON.stringify(messages());
+    const blob = new Blob([messagesForExport], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "luna_conversation.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div class="flex flex-col h-screen max-w-4xl mx-auto p-4 space-y-4">
       <div class="flex flex-col h-full border border-gray-300 rounded-lg shadow-md overflow-hidden">
@@ -215,6 +229,13 @@ const App = () => {
             title="Clear chat history"
           >
             🗑️
+          </button>
+          <button
+          onClick={exportAsJson}
+          class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
+          title="Export as JSON"
+          >
+            Export as JSON...
           </button>
         </div>
 
