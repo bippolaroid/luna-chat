@@ -7,16 +7,19 @@ interface msgProps {
   status?: string;
 }
 
-const OLLAMA_API_URL = "http://localhost:11434/api";
+const OLLAMA_API_URL = "http://10.0.0.219:11434/api";
 const LOCAL_STORAGE_KEY = "ollama_chat_history";
 
-const SYSTEM_MODEL = "bippy/mav";
+const SYSTEM_MODEL = "bippy/luna1";
+let userModels = [SYSTEM_MODEL];
+let userAgents = []
 
 const App = () => {
   const [messages, setMessages] = createSignal(
     JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "[]")
   );
   const [input, setInput] = createSignal("");
+  const [isLoggedIn, setIsLoggedIn] = createSignal(false);
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal(null);
   const [isSystemPrompt, setIsSystemPrompt] = createSignal(false);
@@ -54,7 +57,7 @@ const App = () => {
   });
 
   const generateMessageId = () =>
-    `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
   const clearChat = () => {
     setMessages([]);
@@ -206,7 +209,7 @@ const App = () => {
   // JSON Export
   function exportAsJson() {
     const messagesForExport = JSON.stringify(messages());
-    const blob = new Blob([messagesForExport], {type: "application/json"});
+    const blob = new Blob([messagesForExport], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -231,11 +234,11 @@ const App = () => {
             🗑️
           </button>
           <button
-          onClick={exportAsJson}
-          class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
-          title="Export as JSON"
+            onClick={exportAsJson}
+            class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
+            title="Export Conversation"
           >
-            Export as JSON...
+            Export Conversation
           </button>
         </div>
 
@@ -264,17 +267,24 @@ const App = () => {
                   <strong>
                     <Show
                       when={message.role === "user"}
-                      fallback={<>Assistant:&nbsp;</>}
+                      fallback={<>Luna:&nbsp;</>}
                     >
-                      User:&nbsp;
+                      {isLoggedIn() ? "" : "User"}:&nbsp;
                     </Show>
                   </strong>
-                  <Show when={message.content} fallback={<b>...</b>}>
+                  <Show
+                    when={message.content}
+                    fallback={
+                      <span class="animate-ping ease-in-out text-gray-500">
+                        ...
+                      </span>
+                    }
+                  >
                     {message.content}
                   </Show>
                 </div>
                 {message.status === "error" && (
-                  <div class="text-red-500 text-sm mt-2">
+                  <div class="text-red-500 uppercase text-sm mt-2">
                     Failed to get response
                   </div>
                 )}
