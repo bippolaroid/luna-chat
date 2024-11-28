@@ -1,4 +1,5 @@
 import { createSignal, createEffect, Show } from "solid-js";
+import "./utils/listeners";
 
 interface msgProps {
   id?: string;
@@ -7,40 +8,27 @@ interface msgProps {
   status?: string;
 }
 
-const OLLAMA_API_URL = "http://10.0.0.219:11434/api";
+const OLLAMA_API_URL = "http://localhost:11434/api/chat";
 const LOCAL_STORAGE_KEY = "ollama_chat_history";
 
 const SYSTEM_MODEL = "bippy/luna1";
-let userModels = [SYSTEM_MODEL];
-let userAgents = []
 
 const App = () => {
   const [messages, setMessages] = createSignal(
     JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "[]")
   );
   const [input, setInput] = createSignal("");
-  const [isLoggedIn, setIsLoggedIn] = createSignal(false);
   const [isLoading, setIsLoading] = createSignal(false);
-  const [error, setError] = createSignal(null);
-  const [isSystemPrompt, setIsSystemPrompt] = createSignal(false);
-  const [systemInput, setSystemInput] = createSignal("");
+  const [error, setError] = createSignal<string | null>(null);
 
-  let messagesEndRef;
   let textareaRef: any;
 
-  createEffect(() => {
-    if (isSystemPrompt()) {
-      var systemPrompt = document.getElementById("system-prompt");
-      systemPrompt?.focus();
-    }
-  });
-
-  // Save messages to localStorage whenever they change
+  // Save messages to localStorage
   createEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages()));
   });
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to the latest message
   createEffect(() => {
     const messagesContainer = document.querySelector(".flex-grow");
     if (messagesContainer) {
@@ -48,7 +36,7 @@ const App = () => {
     }
   });
 
-  // Auto-resize textarea based on content
+  // Auto-resize textarea
   createEffect(() => {
     if (textareaRef) {
       textareaRef.style.height = "0px";
@@ -68,54 +56,43 @@ const App = () => {
     const userMessage = input().trim();
     if (!userMessage || isLoading()) return;
 
-    try {
-      setIsLoading(true);
-      setError(null);
+    setIsLoading(true);
+    setError(null);
 
-      // Add user message
-      const userMessageId = generateMessageId();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: userMessageId,
-          role: "user",
-          content: userMessage,
-          status: "complete",
-        },
-      ]);
+    const userMessageId = generateMessageId();
+    const assistantMessageId = generateMessageId();
 
-      // Add assistant placeholder
-      const assistantMessageId = generateMessageId();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistantMessageId,
-          role: "assistant",
-          content: "",
-          status: "pending",
-        },
-      ]);
-
-      setInput("");
-
-      // Prepare conversation history for context
-      const conversationHistory = messages().map((msg: msgProps) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
-
-      // Add current message
-      conversationHistory.push({
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: userMessageId,
         role: "user",
         content: userMessage,
-      });
+        status: "complete",
+      },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        status: "pending",
+      },
+    ]);
 
-      // Make streaming request to Ollama chat API
-      const response = await fetch(`${OLLAMA_API_URL}/chat`, {
+    console.log(messages());
+
+    setInput("");
+
+    const conversationHistory = messages().map((msg: msgProps) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+
+    conversationHistory.push({ role: "user", content: userMessage });
+
+    try {
+      const response = await fetch(OLLAMA_API_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: SYSTEM_MODEL,
           messages: conversationHistory,
@@ -124,19 +101,16 @@ const App = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! Status: ${response.status}`);
       }
 
       const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Failed to get response reader");
-      }
+      if (!reader) throw new Error("Failed to get response reader");
 
       let accumulatedText = "";
 
       while (true) {
         const { done, value } = await reader.read();
-
         if (done) break;
 
         const chunk = new TextDecoder().decode(value);
@@ -145,10 +119,8 @@ const App = () => {
         for (const line of lines) {
           try {
             const data = JSON.parse(line);
-
             if (data.message?.content) {
               accumulatedText += data.message.content;
-
               setMessages((prev) =>
                 prev.map((msg: msgProps) =>
                   msg.id === assistantMessageId
@@ -161,29 +133,25 @@ const App = () => {
                 )
               );
             }
-
-            if (data.done) {
-              setIsLoading(false);
-            }
           } catch (err) {
             console.error("Failed to parse chunk:", err);
           }
         }
       }
-    } catch (err) {
+
+      setIsLoading(false);
+    } catch (err: unknown) {
       console.error("Failed to send message:", err);
-      setError(null);
+      err instanceof Error
+        ? setError(err.message || "Failed to fetch response")
+        : false;
       setIsLoading(false);
 
-      setMessages((prev) => {
-        const lastMsg = prev[prev.length - 1];
-        if (lastMsg?.role === "assistant" && lastMsg.status === "pending") {
-          return prev.map((msg: msgProps) =>
-            msg.id === lastMsg.id ? { ...msg, status: "error" } : msg
-          );
-        }
-        return prev;
-      });
+      setMessages((prev) =>
+        prev.map((msg: msgProps) =>
+          msg.id === assistantMessageId ? { ...msg, status: "error" } : msg
+        )
+      );
     }
   };
 
@@ -194,52 +162,71 @@ const App = () => {
     }
   };
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "`" && !isSystemPrompt()) {
-      document.getElementById("user-prompt")?.focus();
-    }
-    if (e.key === "`") {
-      setIsSystemPrompt(true);
-    }
-    if (e.key === "Escape" || e.key === "Enter") {
-      setIsSystemPrompt(false);
-    }
-  });
-
-  // JSON Export
-  function exportAsJson() {
+  const exportAsJson = () => {
     const messagesForExport = JSON.stringify(messages());
     const blob = new Blob([messagesForExport], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "luna_conversation.json";
+    a.download = "conversation.json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  function extractCodeBlock(message: string, language = "javascript") {
+    const regex = new RegExp(`\`\`\`${language}\\s*([\\s\\S]*?)\`\`\``);
+    const match = message.match(regex);
+    console.log(match);
+    return match ? match[1].trim() : null;
+  }
+
+  function formatMsg(message: string) {
+    if (message.includes("```")) {
+      var code = extractCodeBlock(message);
+
+      return (
+        <>
+          <div class="bg-slate-100 border-slate-200 border my-3">
+            <div class="bg-slate-200 px-3 py-1 text-slate-400">javascript</div>
+            <div class="px-3 py-1">{code}</div>
+            <div class="px-3 py-3">
+              <button class="px-6 py-1 text-slate-400 bg-slate-200 rounded border">
+                Copy
+              </button>
+            </div>
+          </div>
+          {message}
+        </>
+      );
+    }
+    return message;
   }
 
   return (
-    <div class="flex flex-col h-screen max-w-4xl mx-auto p-4 space-y-4">
-      <div class="flex flex-col h-full border border-gray-300 rounded-lg shadow-md overflow-hidden">
-        <div class="p-4 border-b flex justify-between items-center bg-white">
-          <h1 class="text-lg">🌔 Hello. I'm Luna.</h1>
-          <h2 class="text-sm font-bold">What can I help you with?</h2>
-          <button
-            onClick={clearChat}
-            class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
-            title="Clear chat history"
-          >
-            🗑️
-          </button>
-          <button
-            onClick={exportAsJson}
-            class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
-            title="Export Conversation"
-          >
-            Export Conversation
-          </button>
+    <div class="flex flex-col h-screen">
+      <div class="flex flex-col h-full overflow-hidden">
+        <div class="py-3 border-b flex justify-between items-center bg-white">
+          <div class="flex items-center">
+            <span class="text-6xl"><a href="./">🌔</a></span><h1 class="text-3xl">Hi, I'm Luna.</h1>
+          </div>
+          <div>
+            <button
+              onClick={clearChat}
+              class="text-xl px-3 py-1 mr-3 border border-gray-100 rounded hover:bg-gray-100 transition-colors"
+              title="Reset session"
+            >
+              🗑️
+            </button>
+            <button
+              onClick={exportAsJson}
+              class="text-xl px-3 py-1 mr-3 border border-gray-100 rounded hover:bg-gray-100 transition-colors"
+              title="Export conversation as JSON"
+            >
+              🗃️
+            </button>
+          </div>
         </div>
 
         {error() && (
@@ -248,39 +235,34 @@ const App = () => {
           </div>
         )}
 
-        <div class="flex-grow overflow-y-auto p-4 space-y-4 bg-gray-50">
+        <div class="flex-grow overflow-y-auto px-3 bg-gray-50">
           {messages().map((message: msgProps) => (
             <div
-              class={`flex ${
+              class={`flex mt-3 ${
                 message.role === "user" ? "justify-end" : "justify-start"
               }`}
               id={message.id}
             >
+              <span class="text-3xl">
+                <Show when={message.role === "user"} fallback={<>🌔</>}>
+                  👤
+                </Show>
+              </span>
               <div
-                class={`max-w-[80%] p-4 rounded-lg ${
+                class={`max-w-[80%] py-3 px-6 rounded-xl ${
                   message.role === "user"
                     ? "bg-blue-500 text-white"
                     : "bg-white"
                 }`}
               >
                 <div class="whitespace-pre-wrap">
-                  <strong>
-                    <Show
-                      when={message.role === "user"}
-                      fallback={<>Luna:&nbsp;</>}
-                    >
-                      {isLoggedIn() ? "" : "User"}:&nbsp;
-                    </Show>
-                  </strong>
                   <Show
                     when={message.content}
                     fallback={
-                      <span class="animate-ping ease-in-out text-gray-500">
-                        ...
-                      </span>
+                      <span class="animate-ping text-gray-500">...</span>
                     }
                   >
-                    {message.content}
+                    {formatMsg(message.content)}
                   </Show>
                 </div>
                 {message.status === "error" && (
@@ -291,13 +273,12 @@ const App = () => {
               </div>
             </div>
           ))}
-          <div ref={messagesEndRef} />
         </div>
 
         <div class="p-4 border-t bg-white">
           <div class="flex gap-2">
             <textarea
-              id="user-prompt"
+              id="user-input"
               ref={textareaRef}
               class="flex-grow resize-none border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[52px] max-h-[200px]"
               rows={1}
@@ -317,17 +298,6 @@ const App = () => {
           </div>
         </div>
       </div>
-      <Show when={isSystemPrompt()}>
-        <div class="w-full font-bold rounded-lg shadow-md bg-red-700 text-white px-3 py-1">
-          SYSTEM PROMPT{" "}
-          <input
-            id="system-prompt"
-            type="text"
-            class="bg-transparent w-full font-normal outline-none"
-            onInput={(e) => setSystemInput(e.currentTarget.value)}
-          />
-        </div>
-      </Show>
     </div>
   );
 };
