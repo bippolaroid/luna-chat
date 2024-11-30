@@ -1,4 +1,5 @@
 import { createSignal, createEffect, Show } from "solid-js";
+import { UserIcon } from "./chat/components/UserIcon";
 import "./utils/listeners";
 
 interface msgProps {
@@ -6,6 +7,7 @@ interface msgProps {
   role: string;
   content: string;
   status?: string;
+  prompt_eval_duration?: string;
 }
 
 const OLLAMA_API_URL = "http://localhost:11434/api/chat";
@@ -65,8 +67,6 @@ const App = () => {
       },
     ]);
 
-    console.log(messages());
-
     setInput("");
 
     const conversationHistory = messages().map((msg: msgProps) => ({
@@ -98,7 +98,6 @@ const App = () => {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
 
         const chunk = new TextDecoder().decode(value);
         const lines = chunk.split("\n").filter((line) => line.trim());
@@ -106,24 +105,28 @@ const App = () => {
         for (const line of lines) {
           try {
             const data = JSON.parse(line);
-            if (data.message?.content) {
-              accumulatedText += data.message.content;
-              setMessages((prev) =>
-                prev.map((msg: msgProps) =>
-                  msg.id === assistantMessageId
-                    ? {
-                        ...msg,
-                        content: accumulatedText,
-                        status: data.done ? "complete" : "pending",
-                      }
-                    : msg
-                )
-              );
-            }
+            console.log(data);
+            accumulatedText += data.message.content;
+            setMessages((prev) =>
+              prev.map((msg: msgProps) =>
+                msg.id === assistantMessageId
+                  ? {
+                      ...msg,
+                      content: accumulatedText,
+                      status: data.done ? "complete" : "pending",
+                      prompt_eval_duration: data.done
+                        ? data.prompt_eval_duration / 1000000000
+                        : false,
+                    }
+                  : msg
+              )
+            );
           } catch (err) {
             console.error("Failed to parse chunk:", err);
           }
         }
+
+        if (done) break;
       }
 
       setIsLoading(false);
@@ -149,10 +152,14 @@ const App = () => {
     }
   };
 
-  function generateId(type: string = "id", prefix?: string, suffix?: string) {
-    return `${prefix}_${type}_${Date.now()}_${Math.random()
+  function generateId(
+    type: string = "id",
+    prefix: string = "",
+    suffix: string = ""
+  ) {
+    return `${prefix}${type}${Date.now()}_${Math.random()
       .toString(36)
-      .substring(2, 9)}_${suffix}`;
+      .substring(2, 9)}${suffix}`;
   }
 
   const exportAsJson = () => {
@@ -178,16 +185,20 @@ const App = () => {
       };
 
       if (match) {
-        message = message.replace(match[0], "WE SWAPPED IT");
+        message = message.replace(match[0], "nocap%%%");
       }
 
       return (
         <>
-          <div class="bg-gray-100 border-violet-900 border my-3 shadow-3xl shadow-gray-100 rounded-md">
+          <div class="bg-neutral-100 border-violet-900 border my-3 shadow-3xl shadow-neutral-100 rounded-md">
             <div class="flex justify-between items-center border-violet-900 border-b px-3 py-1">
-              <div class="text-md text-violet-900">{codeSnippet.language}</div>
-              <div class="text-md cursor-pointer px-3 py-1 m-1 hover:bg-gray-300 transition-colors duration-300">
-                <span class="dark:invert">📃</span>
+              <div class="text-md cursor-default text-violet-300">
+                {codeSnippet.language}
+              </div>
+              <div class="text-md cursor-pointer px-3 py-1 m-1 hover:bg-neutral-300 transition-colors duration-300">
+                <span class="dark:invert" title="Copy to clipboard">
+                  📃
+                </span>
               </div>
             </div>
             <div class="px-6 py-9">{codeSnippet.code}</div>
@@ -198,14 +209,18 @@ const App = () => {
     }
     return message;
   }
+  console.log(messages());
 
   return (
     <div class="dark:invert flex flex-col h-screen transition duration-1000 ease-in-out">
       <div class="flex flex-col h-full overflow-hidden">
-        <div class="py-3 border-b flex justify-between items-center bg-white">
+        <div class="px-6 py-6 border-b flex justify-between items-center bg-neutral-100">
           <div class="flex items-center">
-            <span class="text-6xl hover:animate-spin">
-              <a href="./" class="hover:opacity-10">
+            <span class="text-6xl">
+              <a
+                href="./"
+                class="hover:opacity-50 transition-opacity duration-500"
+              >
                 🌔
               </a>
             </span>
@@ -214,17 +229,17 @@ const App = () => {
           <div>
             <button
               onClick={clearChat}
-              class="text-xl px-3 py-1 mr-3 border border-gray-100 hover:bg-gray-300 transition-colors"
+              class="text-xl px-3 py-1 mr-3 border border-neutral-100 hover:bg-neutral-300 transition-colors"
               title="Reset session"
             >
-              🗑️
+              <span class="dark:invert">🗑️</span>
             </button>
             <button
               onClick={exportAsJson}
-              class="text-xl px-3 py-1 mr-3 border border-gray-100 hover:bg-gray-300 transition-colors"
+              class="text-xl px-3 py-1 mr-3 border border-neutral-100 hover:bg-neutral-300 transition-colors"
               title="Export conversation as JSON"
             >
-              🗃️
+              <span class="dark:invert">🗃️</span>
             </button>
           </div>
         </div>
@@ -235,7 +250,7 @@ const App = () => {
           </div>
         )}
 
-        <div class="flex-grow overflow-y-auto px-3 bg-gray-50">
+        <div class="flex-grow overflow-y-auto pl-3 bg-neutral-50">
           {messages().map((message: msgProps) => (
             <div
               class={`flex mt-6 ${
@@ -243,15 +258,16 @@ const App = () => {
               }`}
               id={message.id}
             >
-              <span class="text-sm mr-3">
-                <Show when={message.role === "user"} fallback={<>🌔</>}>
-                  👤
-                </Show>
+              <span
+                class="text-sm mr-3 cursor-pointer"
+                title={message.role === "user" ? "bippy" : "Assistant"}
+              >
+                <UserIcon type={message.role} />
               </span>
               <div
                 class={`max-w-[80%] py-3 px-6 text-lg ${
                   message.role === "user"
-                    ? "border-gray-400 bg-gray-100 border-l-8"
+                    ? "border-neutral-400 bg-neutral-100 border-l-8"
                     : "border-violet-900 bg-violet-100 border-l-8 text-black"
                 }`}
               >
@@ -259,10 +275,15 @@ const App = () => {
                   <Show
                     when={message.content}
                     fallback={
-                      <span class="animate-ping text-gray-500">...</span>
+                      <span class="animate-ping text-neutral-500">...</span>
                     }
                   >
-                    {formatMsg(message.content)}
+                    <Show when={message.prompt_eval_duration}>
+                      <p class="text-sm text-violet-300">
+                        Thought for {message.prompt_eval_duration} seconds.
+                      </p>
+                    </Show>
+                    <p class="mb-1">{formatMsg(message.content)}</p>
                   </Show>
                 </div>
                 {message.status === "error" && (
@@ -275,7 +296,7 @@ const App = () => {
           ))}
         </div>
 
-        <div class="p-9 border-t bg-gray-100">
+        <div class="p-9 border-t bg-neutral-100">
           <div class="flex gap-2">
             <textarea
               id="user-input"
