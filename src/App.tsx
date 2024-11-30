@@ -21,8 +21,6 @@ const App = () => {
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  let textareaRef: any;
-
   // Save messages to localStorage
   createEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages()));
@@ -36,17 +34,6 @@ const App = () => {
     }
   });
 
-  // Auto-resize textarea
-  createEffect(() => {
-    if (textareaRef) {
-      textareaRef.style.height = "0px";
-      textareaRef.style.height = `${textareaRef.scrollHeight}px`;
-    }
-  });
-
-  const generateMessageId = () =>
-    `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
   const clearChat = () => {
     setMessages([]);
     localStorage.removeItem(LOCAL_STORAGE_KEY);
@@ -59,8 +46,8 @@ const App = () => {
     setIsLoading(true);
     setError(null);
 
-    const userMessageId = generateMessageId();
-    const assistantMessageId = generateMessageId();
+    const userMessageId = generateId("msg_");
+    const assistantMessageId = generateId("msg_");
 
     setMessages((prev) => [
       ...prev,
@@ -162,40 +149,48 @@ const App = () => {
     }
   };
 
+  function generateId(type: string = "id", prefix?: string, suffix?: string) {
+    return `${prefix}_${type}_${Date.now()}_${Math.random()
+      .toString(36)
+      .substring(2, 9)}_${suffix}`;
+  }
+
   const exportAsJson = () => {
     const messagesForExport = JSON.stringify(messages());
     const blob = new Blob([messagesForExport], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "conversation.json";
+    a.download = `${generateId("conversation_")}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  function extractCodeBlock(message: string, language = "javascript") {
-    const regex = new RegExp(`\`\`\`${language}\\s*([\\s\\S]*?)\`\`\``);
-    const match = message.match(regex);
-    console.log(match);
-    return match ? match[1].trim() : null;
-  }
-
   function formatMsg(message: string) {
     if (message.includes("```")) {
-      var code = extractCodeBlock(message);
+      const regex = new RegExp(`\`\`\`([a-zA-Z]+)?\\s*([\\s\\S]*?)\`\`\``);
+      const match = message.match(regex);
+      const codeSnippet = {
+        language: match ? match[1].trim() : "code",
+        code: match ? match[2].trim() : "snippet",
+      };
+
+      if (match) {
+        message = message.replace(match[0], "WE SWAPPED IT");
+      }
 
       return (
         <>
-          <div class="bg-slate-100 border-slate-200 border my-3">
-            <div class="bg-slate-200 px-3 py-1 text-slate-400">javascript</div>
-            <div class="px-3 py-1">{code}</div>
-            <div class="px-3 py-3">
-              <button class="px-6 py-1 text-slate-400 bg-slate-200 rounded border">
-                Copy
-              </button>
+          <div class="bg-gray-100 border-violet-900 border my-3 shadow-3xl shadow-gray-100 rounded-md">
+            <div class="flex justify-between items-center border-violet-900 border-b px-3 py-1">
+              <div class="text-md text-violet-900">{codeSnippet.language}</div>
+              <div class="text-md cursor-pointer px-3 py-1 m-1 hover:bg-gray-300 transition-colors duration-300">
+                <span class="dark:invert">📃</span>
+              </div>
             </div>
+            <div class="px-6 py-9">{codeSnippet.code}</div>
           </div>
           {message}
         </>
@@ -205,23 +200,28 @@ const App = () => {
   }
 
   return (
-    <div class="flex flex-col h-screen">
+    <div class="dark:invert flex flex-col h-screen transition duration-1000 ease-in-out">
       <div class="flex flex-col h-full overflow-hidden">
         <div class="py-3 border-b flex justify-between items-center bg-white">
           <div class="flex items-center">
-            <span class="text-6xl"><a href="./">🌔</a></span><h1 class="text-3xl">Hi, I'm Luna.</h1>
+            <span class="text-6xl hover:animate-spin">
+              <a href="./" class="hover:opacity-10">
+                🌔
+              </a>
+            </span>
+            <h1 class="text-3xl">Hi, I'm Luna.</h1>
           </div>
           <div>
             <button
               onClick={clearChat}
-              class="text-xl px-3 py-1 mr-3 border border-gray-100 rounded hover:bg-gray-100 transition-colors"
+              class="text-xl px-3 py-1 mr-3 border border-gray-100 hover:bg-gray-300 transition-colors"
               title="Reset session"
             >
               🗑️
             </button>
             <button
               onClick={exportAsJson}
-              class="text-xl px-3 py-1 mr-3 border border-gray-100 rounded hover:bg-gray-100 transition-colors"
+              class="text-xl px-3 py-1 mr-3 border border-gray-100 hover:bg-gray-300 transition-colors"
               title="Export conversation as JSON"
             >
               🗃️
@@ -230,7 +230,7 @@ const App = () => {
         </div>
 
         {error() && (
-          <div class="mx-4 mt-4 p-4 bg-red-500 text-white rounded-lg">
+          <div class="mx-4 mt-4 p-4 bg-red-500 text-white">
             <p>{error()}</p>
           </div>
         )}
@@ -238,21 +238,21 @@ const App = () => {
         <div class="flex-grow overflow-y-auto px-3 bg-gray-50">
           {messages().map((message: msgProps) => (
             <div
-              class={`flex mt-3 ${
+              class={`flex mt-6 ${
                 message.role === "user" ? "justify-end" : "justify-start"
               }`}
               id={message.id}
             >
-              <span class="text-3xl">
+              <span class="text-sm mr-3">
                 <Show when={message.role === "user"} fallback={<>🌔</>}>
                   👤
                 </Show>
               </span>
               <div
-                class={`max-w-[80%] py-3 px-6 rounded-xl ${
+                class={`max-w-[80%] py-3 px-6 text-lg ${
                   message.role === "user"
-                    ? "bg-blue-500 text-white"
-                    : "bg-white"
+                    ? "border-gray-400 bg-gray-100 border-l-8"
+                    : "border-violet-900 bg-violet-100 border-l-8 text-black"
                 }`}
               >
                 <div class="whitespace-pre-wrap">
@@ -275,25 +275,26 @@ const App = () => {
           ))}
         </div>
 
-        <div class="p-4 border-t bg-white">
+        <div class="p-9 border-t bg-gray-100">
           <div class="flex gap-2">
             <textarea
               id="user-input"
-              ref={textareaRef}
-              class="flex-grow resize-none border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[52px] max-h-[200px]"
+              class="flex-grow resize-none border text-lg p-3 focus:outline-none focus:ring-2 focus:ring-violet-900 min-h-[52px] max-h-[200px]"
               rows={1}
               value={input()}
-              placeholder="Type a message..."
+              placeholder="Your message..."
               onInput={(e) => setInput(e.currentTarget.value)}
               onKeyDown={handleKeyPress}
               disabled={isLoading()}
             />
             <button
               onClick={sendMessage}
-              class="bg-blue-500 text-white rounded-lg px-4 py-2 disabled:opacity-50"
+              class="bg-violet-900 border-violet-900 enabled:hover:bg-transparent border text-2xl text-white w-14 disabled:opacity-10"
               disabled={isLoading()}
             >
-              {isLoading() ? "Sending..." : "Send"}
+              <div class={isLoading() ? "animate-spin" : ""}>
+                {isLoading() ? "/" : "💬"}
+              </div>
             </button>
           </div>
         </div>
