@@ -1,6 +1,6 @@
 import { createSignal, createEffect, Show } from "solid-js";
-import { UserIcon } from "./chat/components/UserIcon";
-import "./utils/listeners";
+import { UserIcon } from "../components/chat/UserIcon";
+import "../utils/listeners";
 
 interface msgProps {
   id?: string;
@@ -15,7 +15,7 @@ const LOCAL_STORAGE_KEY = "ollama_chat_history";
 
 const SYSTEM_MODEL = "bippy/luna1";
 
-const App = () => {
+const Chat = () => {
   const [messages, setMessages] = createSignal(
     JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || "[]")
   );
@@ -184,32 +184,10 @@ const App = () => {
         code: match ? match[2].trim() : "snippet",
       };
 
-      if (match) {
-        message = message.replace(match[0], "nocap%%%");
-      }
-
-      return (
-        <>
-          <div class="bg-neutral-100 border-violet-900 border my-3 shadow-3xl shadow-neutral-100 rounded-md">
-            <div class="flex justify-between items-center border-violet-900 border-b px-3 py-1">
-              <div class="text-md cursor-default text-violet-300">
-                {codeSnippet.language}
-              </div>
-              <div class="text-md cursor-pointer px-3 py-1 m-1 hover:bg-neutral-300 transition-colors duration-300">
-                <span class="dark:invert" title="Copy to clipboard">
-                  📃
-                </span>
-              </div>
-            </div>
-            <div class="px-6 py-9">{codeSnippet.code}</div>
-          </div>
-          {message}
-        </>
-      );
+      return message;
     }
     return message;
   }
-  console.log(messages());
 
   return (
     <div class="dark:invert flex flex-col h-screen transition duration-1000 ease-in-out">
@@ -265,7 +243,7 @@ const App = () => {
                 <UserIcon type={message.role} />
               </span>
               <div
-                class={`max-w-[80%] py-3 px-6 text-lg ${
+                class={`max-w-[80%] py-3 px-6 pb-6 text-lg ${
                   message.role === "user"
                     ? "border-neutral-400 bg-neutral-100 border-l-8"
                     : "border-violet-900 bg-violet-100 border-l-8 text-black"
@@ -279,7 +257,7 @@ const App = () => {
                     }
                   >
                     <Show when={message.prompt_eval_duration}>
-                      <p class="text-sm text-violet-300">
+                      <p class="text-sm text-violet-300 mb-2">
                         Thought for {message.prompt_eval_duration} seconds.
                       </p>
                     </Show>
@@ -324,4 +302,4 @@ const App = () => {
   );
 };
 
-export default App;
+export default Chat;

@@ -1,8 +1,13 @@
 /* @refresh reload */
-import { render } from 'solid-js/web'
-import './index.css'
-import App from './App.tsx'
+import { Router, Route } from "@solidjs/router";
+import { render } from "solid-js/web";
+import "./index.css";
+import Chat from "./pages/Chat.tsx";
 
-const root = document.getElementById('root')
+const root = document.getElementById("root");
 
-render(() => <App />, root!)
+render(() => (
+    <Router>
+        <Route path={["/", "/chat"]} component={Chat} />
+    </Router>
+), root!);
