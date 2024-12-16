@@ -7,7 +7,7 @@ interface msgProps {
   role: string;
   content: string;
   status?: string;
-  prompt_eval_duration?: string;
+  prompt_eval_duration?: number;
 }
 
 const OLLAMA_API_URL = "http://localhost:11434/api/chat";
@@ -152,42 +152,76 @@ const Chat = () => {
     }
   };
 
-  function generateId(
-    type: string = "id",
-    prefix: string = "",
-    suffix: string = ""
-  ) {
-    return `${prefix}${type}${Date.now()}_${Math.random()
+  function generateId(suffix: string = "convo") {
+    return `${suffix}_${Date.now()}_${Math.random()
       .toString(36)
-      .substring(2, 9)}${suffix}`;
+      .substring(2, 9)}`;
   }
 
-  const exportAsJson = () => {
-    const messagesForExport = JSON.stringify(messages());
-    const blob = new Blob([messagesForExport], { type: "application/json" });
+  const exportAsJson = async () => {
+    let messagesForExport = await messages().map((msg: msgProps) => {
+      return {
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        status: msg.status,
+      };
+    });
+
+    const conversationTitleFetch = async () => {
+      messagesForExport.push({
+        role: "user",
+        content:
+          "Respond only with a title summarizing this conversation in eight words or less and with no special characters.",
+      });
+      try {
+        const response = await fetch(OLLAMA_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: SYSTEM_MODEL,
+            messages: messagesForExport,
+            stream: false,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Could not fetch title for some odd reason.");
+        }
+
+        const json = await response.json();
+        return json.message.content;
+      } catch (err) {
+        console.error("Error getting title: ", err);
+      }
+    };
+
+    const conversationTitle = await conversationTitleFetch();
+
+    messagesForExport.unshift({
+      username: "bippy",
+      title: conversationTitle,
+      dateCreated: "date",
+      status: "begin",
+    });
+
+    messagesForExport.pop();
+    messagesForExport.push({
+      status: "end",
+    });
+
+    const blob = new Blob([JSON.stringify(messagesForExport)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${generateId("conversation_")}.json`;
+    a.download = `${generateId(conversationTitle.split(" ").join("_"))}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
-  function formatMsg(message: string) {
-    if (message.includes("```")) {
-      const regex = new RegExp(`\`\`\`([a-zA-Z]+)?\\s*([\\s\\S]*?)\`\`\``);
-      const match = message.match(regex);
-      const codeSnippet = {
-        language: match ? match[1].trim() : "code",
-        code: match ? match[2].trim() : "snippet",
-      };
-
-      return message;
-    }
-    return message;
-  }
 
   return (
     <div class="dark:invert flex flex-col h-screen transition duration-1000 ease-in-out">
@@ -256,17 +290,26 @@ const Chat = () => {
                       <span class="animate-ping text-neutral-500">...</span>
                     }
                   >
-                    <Show when={message.prompt_eval_duration}>
-                      <p class="text-sm text-violet-300 mb-2">
-                        Thought for {message.prompt_eval_duration} seconds.
+                    <Show
+                      when={
+                        message.prompt_eval_duration &&
+                        message.prompt_eval_duration !== undefined
+                      }
+                    >
+                      <p class="text-sm text-violet-500 mb-2">
+                        Processed in{" "}
+                        {message.prompt_eval_duration
+                          ? Math.round(message.prompt_eval_duration * 100) / 100
+                          : null}{" "}
+                        seconds.
                       </p>
                     </Show>
-                    <p class="mb-1">{formatMsg(message.content)}</p>
+                    <p class="mb-1">{message.content}</p>
                   </Show>
                 </div>
                 {message.status === "error" && (
                   <div class="text-red-500 uppercase text-sm mt-2">
-                    Failed to get response
+                    Failed to get response.
                   </div>
                 )}
               </div>
@@ -288,7 +331,7 @@ const Chat = () => {
             />
             <button
               onClick={sendMessage}
-              class="bg-violet-900 border-violet-900 enabled:hover:bg-transparent border text-2xl text-white w-14 disabled:opacity-10"
+              class="bg-violet-900 hover:opacity-80 text-2xl text-white w-14 disabled:opacity-10 transition-opacity duration-500"
               disabled={isLoading()}
             >
               <div class={isLoading() ? "animate-spin" : ""}>
